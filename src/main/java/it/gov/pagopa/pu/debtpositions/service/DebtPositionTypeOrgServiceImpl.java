@@ -36,21 +36,21 @@ import static it.gov.pagopa.pu.debtpositions.util.Utilities.checkImmutableField;
 @Service
 public class DebtPositionTypeOrgServiceImpl implements DebtPositionTypeOrgService {
   private final DebtPositionTypeOrgRepository debtPositionTypeOrgRepository;
-  private final DebtPositionTypeOrgOperatorsService debtPositionTypeOrgOperatorsService;
+  private final DebtPositionTypeOrgOperatorsFacadeService debtPositionTypeOrgOperatorsFacadeService;
   private final SpontaneousFormRepository spontaneousFormRepository;
   private final WorkflowDebtPositionService workflowDebtPositionService;
   private final OrganizationService organizationService;
   private final DebtPositionTypeOrgBalanceCostRepository debtPositionTypeOrgBalanceCostRepository;
 
   public DebtPositionTypeOrgServiceImpl(DebtPositionTypeOrgRepository debtPositionTypeOrgRepository,
-                                        DebtPositionTypeOrgOperatorsService debtPositionTypeOrgOperatorsService,
+                                        DebtPositionTypeOrgOperatorsFacadeService debtPositionTypeOrgOperatorsFacadeService,
                                         SpontaneousFormRepository spontaneousFormRepository,
                                         WorkflowDebtPositionService workflowDebtPositionService,
                                         OrganizationService organizationService,
                                         DebtPositionTypeOrgBalanceCostRepository debtPositionTypeOrgBalanceCostRepository
   ) {
     this.debtPositionTypeOrgRepository = debtPositionTypeOrgRepository;
-    this.debtPositionTypeOrgOperatorsService = debtPositionTypeOrgOperatorsService;
+    this.debtPositionTypeOrgOperatorsFacadeService = debtPositionTypeOrgOperatorsFacadeService;
     this.spontaneousFormRepository = spontaneousFormRepository;
     this.workflowDebtPositionService = workflowDebtPositionService;
     this.organizationService = organizationService;
@@ -75,7 +75,7 @@ public class DebtPositionTypeOrgServiceImpl implements DebtPositionTypeOrgServic
   @Override
   public void deleteDebtPositionTypeOrg(Long debtPositionTypeOrgId) {
     DebtPositionTypeOrg debtPositionTypeOrg = findDptoByIdOrThrow(debtPositionTypeOrgId);
-    debtPositionTypeOrgOperatorsService.deleteOperatorsByDebtPositionTypeOrgId(debtPositionTypeOrgId);
+    debtPositionTypeOrgOperatorsFacadeService.deleteOperatorsByDebtPositionTypeOrgId(debtPositionTypeOrgId);
     debtPositionTypeOrgBalanceCostRepository.deleteByDebtPositionTypeOrgId(debtPositionTypeOrgId);
     debtPositionTypeOrgRepository.delete(debtPositionTypeOrg);
   }
@@ -95,6 +95,12 @@ public class DebtPositionTypeOrgServiceImpl implements DebtPositionTypeOrgServic
           .map(dto -> mapToDebtPositionTypeOrgBalanceCost(dto, savedDebtPositionTypeOrg.getDebtPositionTypeOrgId()))
           .toList()
       ));
+    Optional.ofNullable(saveDebtPositionTypeOrgDTO.getDeleteDebtPositionTypeOrgBalanceCostList())
+      .ifPresent(deleteDptoBalanceCostList -> debtPositionTypeOrgBalanceCostRepository.deleteAllById(
+        deleteDptoBalanceCostList.stream()
+          .map(dto -> new DebtPositionTypeOrgBalanceCost.DebtPositionTypeOrgBalanceCostId(savedDebtPositionTypeOrg.getDebtPositionTypeOrgId(), dto.getType(), dto.getOperatingYear()))
+          .toList()
+      ));
     handleOperators(savedDebtPositionTypeOrg, saveDebtPositionTypeOrgDTO);
     return savedDebtPositionTypeOrg;
   }
@@ -108,20 +114,20 @@ public class DebtPositionTypeOrgServiceImpl implements DebtPositionTypeOrgServic
     }
 
     if (debtPositionTypeOrgRepository.updateFlagActiveDebtPositionTypeOrg(debtPositionTypeOrgId, flagActive) == 0) {
-      throw new NotFoundException(ErrorCodeConstants.ERROR_CODE_DEBT_POSITION_TYPE_ORG_NOT_FOUND,"DebtPositionTypeOrg with id %d not found".formatted(debtPositionTypeOrgId));
+      throw new NotFoundException(ErrorCodeConstants.ERROR_CODE_DEBT_POSITION_TYPE_ORG_NOT_FOUND, "DebtPositionTypeOrg with id %d not found".formatted(debtPositionTypeOrgId));
     }
   }
 
   private void handleOperators(DebtPositionTypeOrg debtPositionTypeOrg, SaveDebtPositionTypeOrgDTO saveDebtPositionTypeOrgDTO) {
     if (Boolean.TRUE.equals(saveDebtPositionTypeOrgDTO.getRemoveEnabledOperators())) {
-      debtPositionTypeOrgOperatorsService.deleteOperatorsByDebtPositionTypeOrgId(debtPositionTypeOrg.getDebtPositionTypeOrgId());
+      debtPositionTypeOrgOperatorsFacadeService.deleteOperatorsByDebtPositionTypeOrgId(debtPositionTypeOrg.getDebtPositionTypeOrgId());
     }
     if (!CollectionUtils.isEmpty(saveDebtPositionTypeOrgDTO.getDisabledOperators())) {
-      debtPositionTypeOrgOperatorsService.deleteOperators(debtPositionTypeOrg.getDebtPositionTypeOrgId(),
+      debtPositionTypeOrgOperatorsFacadeService.deleteOperators(debtPositionTypeOrg.getDebtPositionTypeOrgId(),
         saveDebtPositionTypeOrgDTO.getDisabledOperators());
     }
     if (!CollectionUtils.isEmpty(saveDebtPositionTypeOrgDTO.getEnabledOperators())) {
-      debtPositionTypeOrgOperatorsService.saveOperators(debtPositionTypeOrg.getDebtPositionTypeOrgId(),
+      debtPositionTypeOrgOperatorsFacadeService.saveOperators(debtPositionTypeOrg.getDebtPositionTypeOrgId(),
         saveDebtPositionTypeOrgDTO.getEnabledOperators());
     }
   }
@@ -138,7 +144,7 @@ public class DebtPositionTypeOrgServiceImpl implements DebtPositionTypeOrgServic
     }
 
     String postalIban = debtPositionTypeOrg.getPostalIban();
-    if(StringUtils.isNotBlank(postalIban) && StringUtils.isBlank(debtPositionTypeOrg.getIban())){
+    if (StringUtils.isNotBlank(postalIban) && StringUtils.isBlank(debtPositionTypeOrg.getIban())) {
       throw new InvalidValueException(ErrorCodeConstants.ERROR_CODE_INVALID_POSTAL_IBAN, "It is not possible to set postalIban if the iban is null");
     }
 
@@ -168,7 +174,7 @@ public class DebtPositionTypeOrgServiceImpl implements DebtPositionTypeOrgServic
         });
     }
 
-   triggerMassiveIbanUpdateIfNeeded(debtPositionTypeOrg, existingDpto, accessToken);
+    triggerMassiveIbanUpdateIfNeeded(debtPositionTypeOrg, existingDpto, accessToken);
   }
 
   private void checkReadOnlyFields(DebtPositionTypeOrg existingDebtPositionTypeOrg, DebtPositionTypeOrg updatedDebtPositionTypeOrg) {
